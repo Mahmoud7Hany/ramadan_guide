@@ -5,58 +5,65 @@ import '../models/task.dart';
 
 class TaskProvider with ChangeNotifier {
   List<Task> _tasks = [];
+  SharedPreferences? _prefs;
+  static const String _tasksKey = 'tasks';
 
-  List<Task> get tasks => _tasks;
+  List<Task> get tasks => _tasks..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
   TaskProvider() {
-    loadTasks();
+    _initPrefs();
   }
 
-  // تحميل المهام من shared_preferences عند بدء التطبيق
-  Future<void> loadTasks() async {
-    final prefs = await SharedPreferences.getInstance();
-    String? tasksData = prefs.getString('tasks');
-    if (tasksData != null) {
-      List<dynamic> jsonList = jsonDecode(tasksData);
-      _tasks = jsonList.map((jsonTask) => Task.fromJson(jsonTask)).toList();
+  Future<void> _initPrefs() async {
+    _prefs = await SharedPreferences.getInstance();
+    _loadTasks();
+  }
+
+  void _loadTasks() {
+    try {
+      final tasksJson = _prefs?.getStringList(_tasksKey) ?? [];
+      _tasks = tasksJson.map((json) => Task.fromJson(jsonDecode(json))).toList();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading tasks: $e');
+      _tasks = [];
       notifyListeners();
     }
   }
 
-  // حفظ المهام في shared_preferences
-  Future<void> saveTasks() async {
-    final prefs = await SharedPreferences.getInstance();
-    List<Map<String, dynamic>> jsonList =
-        _tasks.map((task) => task.toJson()).toList();
-    await prefs.setString('tasks', jsonEncode(jsonList));
+  Future<void> _saveTasks() async {
+    try {
+      final tasksJson = _tasks.map((task) => jsonEncode(task.toJson())).toList();
+      await _prefs?.setStringList(_tasksKey, tasksJson);
+    } catch (e) {
+      debugPrint('Error saving tasks: $e');
+    }
   }
 
-  // إضافة مهمة جديدة وحفظ التغييرات
   void addTask(Task task) {
     _tasks.add(task);
-    saveTasks();
+    _saveTasks();
     notifyListeners();
   }
 
-  // تبديل حالة يوم من أيام المهمة وحفظ التغييرات
-  void toggleTaskDay(String taskId, int day) {
-    final task = _tasks.firstWhere((t) => t.id == taskId);
-    task.completedDays[day] = !(task.completedDays[day] ?? false);
-    saveTasks();
+  void updateTask(String id, Task updatedTask) {
+    final index = _tasks.indexWhere((task) => task.id == id);
+    if (index != -1) {
+      _tasks[index] = updatedTask;
+      _saveTasks();
+      notifyListeners();
+    }
+  }
+
+  void deleteTask(String id) {
+    _tasks.removeWhere((task) => task.id == id);
+    _saveTasks();
     notifyListeners();
   }
 
-  // حذف مهمة محددة
-  void deleteTask(String taskId) {
-    _tasks.removeWhere((task) => task.id == taskId);
-    saveTasks();
-    notifyListeners();
-  }
-
-// حذف جميع المهام
   void deleteAllTasks() {
     _tasks.clear();
-    saveTasks();
+    _saveTasks();
     notifyListeners();
   }
 }
